@@ -1,3 +1,7 @@
+/**
+ * Product Table Bean，雖然在DynamoDB中可以不用建。
+ */
+
 package tw.com.hanjiCHEN.productService.products.models;
 
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
