@@ -3,6 +3,7 @@
  */
 package tw.com.hanjiCHEN.productService.products.repositories;
 
+import com.amazonaws.xray.spring.aop.XRayEnabled;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
@@ -14,6 +15,7 @@ import tw.com.hanjiCHEN.productService.products.models.Product;
 import java.util.concurrent.CompletableFuture;
 
 @Repository
+@XRayEnabled
 public class ProductsRepository {
     private final DynamoDbEnhancedAsyncClient dynamoDbEnhancedAsyncClient;
     private final DynamoDbAsyncTable<Product> productsTable;

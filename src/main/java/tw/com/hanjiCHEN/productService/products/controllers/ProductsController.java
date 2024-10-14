@@ -1,5 +1,6 @@
 package tw.com.hanjiCHEN.productService.products.controllers;
 
+import com.amazonaws.xray.spring.aop.XRayEnabled;
 import org.apache.juli.logging.Log;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -20,6 +21,7 @@ import java.util.concurrent.CompletionException;
 
 @RestController
 @RequestMapping("/api/products")
+@XRayEnabled
 public class ProductsController {
     private static final Logger LOG = LogManager.getLogger(ProductsController.class);
     private final ProductsRepository productsRepository;
