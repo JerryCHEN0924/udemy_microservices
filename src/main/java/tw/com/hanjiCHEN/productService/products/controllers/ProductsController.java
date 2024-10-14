@@ -47,6 +47,7 @@ public class ProductsController {
     public ResponseEntity<?> getProductById(@PathVariable("id") String id) {
         Product product = productsRepository.getById(id).join();
         if (product != null) {
+            LOG.info("Get products by its id: {}", id);
             return new ResponseEntity<>(new ProductDto(product), HttpStatus.OK);
         } else {
             return new ResponseEntity<>("Product not found", HttpStatus.NOT_FOUND);

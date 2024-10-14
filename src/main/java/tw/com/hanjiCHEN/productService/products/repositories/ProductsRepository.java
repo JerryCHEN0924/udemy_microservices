@@ -4,12 +4,15 @@
 package tw.com.hanjiCHEN.productService.products.repositories;
 
 import com.amazonaws.xray.spring.aop.XRayEnabled;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 import software.amazon.awssdk.enhanced.dynamodb.*;
 import software.amazon.awssdk.enhanced.dynamodb.model.PagePublisher;
 import software.amazon.awssdk.enhanced.dynamodb.model.UpdateItemEnhancedRequest;
+import tw.com.hanjiCHEN.productService.products.controllers.ProductsController;
 import tw.com.hanjiCHEN.productService.products.models.Product;
 
 import java.util.concurrent.CompletableFuture;
@@ -17,6 +20,8 @@ import java.util.concurrent.CompletableFuture;
 @Repository
 @XRayEnabled
 public class ProductsRepository {
+    private static final Logger LOG = LogManager.getLogger(ProductsRepository.class);
+
     private final DynamoDbEnhancedAsyncClient dynamoDbEnhancedAsyncClient;
     private final DynamoDbAsyncTable<Product> productsTable;
 
@@ -33,6 +38,7 @@ public class ProductsRepository {
     }
 
     public CompletableFuture<Product> getById(String productId) {
+        LOG.info("ProductId: {}", productId);
         return productsTable.getItem(Key.builder()
                 .partitionValue(productId)
                 .build());
