@@ -11,10 +11,16 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 import software.amazon.awssdk.enhanced.dynamodb.*;
 import software.amazon.awssdk.enhanced.dynamodb.model.PagePublisher;
+import software.amazon.awssdk.enhanced.dynamodb.model.QueryConditional;
+import software.amazon.awssdk.enhanced.dynamodb.model.QueryEnhancedRequest;
 import software.amazon.awssdk.enhanced.dynamodb.model.UpdateItemEnhancedRequest;
 import tw.com.hanjiCHEN.productService.products.controllers.ProductsController;
+import tw.com.hanjiCHEN.productService.products.enums.ProductErrors;
+import tw.com.hanjiCHEN.productService.products.exceptions.ProductException;
 import tw.com.hanjiCHEN.productService.products.models.Product;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 @Repository
@@ -32,6 +38,32 @@ public class ProductsRepository {
         this.productsTable = dynamoDbEnhancedAsyncClient.table(productsDdbName, TableSchema.fromBean(Product.class));
     }
 
+    private CompletableFuture<Product> checkIfCodeExists(String code) {
+        List<Product> products = new ArrayList<>();
+        productsTable.index("codeIdx").query(QueryEnhancedRequest.builder()
+                .limit(1)
+                .queryConditional(QueryConditional.keyEqualTo(Key.builder()
+                        .partitionValue(code)
+                        .build()))
+                .build()).subscribe(productPage -> {
+            products.addAll(productPage.items());
+        }).join();
+        if (!products.isEmpty()) {
+            return CompletableFuture.supplyAsync(() -> products.get(0));
+        } else {
+            return CompletableFuture.supplyAsync(() -> null);
+        }
+    }
+
+    public CompletableFuture<Product> getByCode(String code) {
+        Product productByCode = checkIfCodeExists(code).join();
+        if (productByCode != null) {
+            return getById(productByCode.getId());
+        } else {
+            return CompletableFuture.supplyAsync(() -> null);
+        }
+    }
+
     public PagePublisher<Product> getAll() {
         //DO NOT DO THIS IN PRODUCTION
         return productsTable.scan();
@@ -44,7 +76,11 @@ public class ProductsRepository {
                 .build());
     }
 
-    public CompletableFuture<Void> create(Product product) {
+    public CompletableFuture<Void> create(Product product) throws ProductException {
+        Product productWithSameCode = checkIfCodeExists(product.getCode()).join();
+        if (productWithSameCode != null) {
+            throw new ProductException(ProductErrors.PRODUCT_CODE_ALREADY_EXISTS, productWithSameCode.getId());
+        }
         return productsTable.putItem(product);
     }
 
@@ -54,8 +90,13 @@ public class ProductsRepository {
                 .build());
     }
 
-    public CompletableFuture<Product> update(Product product, String productId) {
+    public CompletableFuture<Product> update(Product product, String productId) throws ProductException {
         product.setId(productId);
+        Product productWithSameCode = checkIfCodeExists(product.getCode()).join();
+        if (productWithSameCode != null && !productWithSameCode.getCode().equals(productId)) {
+            throw new ProductException(ProductErrors.PRODUCT_CODE_ALREADY_EXISTS, productWithSameCode.getId());
+        }
+
         return productsTable.updateItem(
                 UpdateItemEnhancedRequest.builder(Product.class)
                         .item(product)

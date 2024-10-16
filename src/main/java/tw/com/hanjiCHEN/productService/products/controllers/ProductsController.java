@@ -34,15 +34,26 @@ public class ProductsController {
     }
 
     @GetMapping
-    public ResponseEntity<List<ProductDto>> getAllProducts() {
-        LOG.info("Get all products");
-        List<ProductDto> productDtoList = new ArrayList<>();
+    public ResponseEntity<?> getAllProducts(@RequestParam(required = false) String code)
+            throws ProductException {
+        if (code != null) {
+            LOG.info("Get product by code:{}", code);
+            Product productByCode = productsRepository.getByCode(code).join();
+            if (productByCode != null) {
+                return new ResponseEntity<>(new ProductDto(productByCode), HttpStatus.OK);
+            } else {
+                throw new ProductException(ProductErrors.PRODUCT_NOT_FOUND, null);
+            }
+        } else {
+            LOG.info("Get all products");
+            List<ProductDto> productDtoList = new ArrayList<>();
 
-        productsRepository.getAll().items().subscribe(product -> {
-            productDtoList.add(new ProductDto(product));
-        }).join();
+            productsRepository.getAll().items().subscribe(product -> {
+                productDtoList.add(new ProductDto(product));
+            }).join();
 
-        return new ResponseEntity<>(productDtoList, HttpStatus.OK);
+            return new ResponseEntity<>(productDtoList, HttpStatus.OK);
+        }
     }
 
     @GetMapping("{id}")
@@ -57,7 +68,7 @@ public class ProductsController {
     }
 
     @PostMapping
-    public ResponseEntity<ProductDto> createProduct(@RequestBody ProductDto productDto) {
+    public ResponseEntity<ProductDto> createProduct(@RequestBody ProductDto productDto) throws ProductException {
         Product productCreated = ProductDto.toProduct(productDto);
         productCreated.setId(UUID.randomUUID().toString()); //Dynamo DB不會產生ID，在此自己設定。
         productsRepository.create(productCreated).join();

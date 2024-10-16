@@ -6,6 +6,7 @@ package tw.com.hanjiCHEN.productService.products.models;
 
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSecondaryPartitionKey;
 
 @DynamoDbBean
 public class Product {
@@ -33,6 +34,7 @@ public class Product {
         this.productName = productName;
     }
 
+    @DynamoDbSecondaryPartitionKey(indexNames = "codeIdx")
     public String getCode() {
         return code;
     }
