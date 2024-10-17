@@ -1,15 +1,20 @@
 package tw.com.hanjiCHEN.productService.products.controllers;
 
 import com.amazonaws.xray.spring.aop.XRayEnabled;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import org.apache.juli.logging.Log;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.ThreadContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import software.amazon.awssdk.services.dynamodb.endpoints.internal.Value;
+import software.amazon.awssdk.services.sns.model.PublishResponse;
+import tw.com.hanjiCHEN.productService.events.dto.EventType;
+import tw.com.hanjiCHEN.productService.events.services.EventsPublisher;
 import tw.com.hanjiCHEN.productService.products.dto.ProductDto;
 import tw.com.hanjiCHEN.productService.products.enums.ProductErrors;
 import tw.com.hanjiCHEN.productService.products.exceptions.ProductException;
@@ -19,7 +24,9 @@ import tw.com.hanjiCHEN.productService.products.repositories.ProductsRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 
 @RestController
 @RequestMapping("/api/products")
@@ -27,10 +34,12 @@ import java.util.concurrent.CompletionException;
 public class ProductsController {
     private static final Logger LOG = LogManager.getLogger(ProductsController.class);
     private final ProductsRepository productsRepository;
+    private final EventsPublisher eventsPublisher;
 
     @Autowired
-    public ProductsController(ProductsRepository productsRepository) {
+    public ProductsController(ProductsRepository productsRepository, EventsPublisher eventsPublisher) {
         this.productsRepository = productsRepository;
+        this.eventsPublisher = eventsPublisher;
     }
 
     @GetMapping
@@ -68,19 +77,41 @@ public class ProductsController {
     }
 
     @PostMapping
-    public ResponseEntity<ProductDto> createProduct(@RequestBody ProductDto productDto) throws ProductException {
+    public ResponseEntity<ProductDto> createProduct(@RequestBody ProductDto productDto)
+            throws ProductException, JsonProcessingException, ExecutionException, InterruptedException {
         Product productCreated = ProductDto.toProduct(productDto);
         productCreated.setId(UUID.randomUUID().toString()); //Dynamo DB不會產生ID，在此自己設定。
-        productsRepository.create(productCreated).join();
+
+        /*
+        productCompletableFeature
+        publishResponseCompletableFuture
+        兩個將會並行處理(parallel)
+         */
+        CompletableFuture<Void> productCompletableFeature = productsRepository.create(productCreated);
+
+        CompletableFuture<PublishResponse> publishResponseCompletableFuture =
+                eventsPublisher.sendProductEvent(productCreated,
+                        EventType.PRODUCT_CREATED, "jk2455892@gmail.com");
+
+        //等候兩個CompletableFuture完成
+        CompletableFuture.allOf(productCompletableFeature,publishResponseCompletableFuture).join();
+
+        PublishResponse publishResponse = publishResponseCompletableFuture.get();
+        //ThreadContext.put("messageId", publishResponse.messageId());
 
         LOG.info("Product created - ID:{}", productCreated.getId());
         return new ResponseEntity<>(new ProductDto(productCreated), HttpStatus.CREATED);
     }
 
     @DeleteMapping("{id}")
-    public ResponseEntity<ProductDto> deleteProduct(@PathVariable("id") String id) throws ProductException {
+    public ResponseEntity<ProductDto> deleteProduct(@PathVariable("id") String id)
+            throws ProductException, JsonProcessingException {
         Product productDeleted = productsRepository.deleteById(id).join();
         if (productDeleted != null) {
+            PublishResponse publishResponse = eventsPublisher.sendProductEvent(productDeleted,
+                    EventType.PRODUCT_DELETED, "jk2455892@gmail.com").join();
+            ThreadContext.put("messageId", publishResponse.messageId());
+
             LOG.info("Product deleted - ID: {}", productDeleted.getId());
             return new ResponseEntity<>(new ProductDto(productDeleted), HttpStatus.OK);
         } else {
@@ -90,12 +121,18 @@ public class ProductsController {
 
     @PutMapping("{id}")
     public ResponseEntity<ProductDto> updateProduct(@RequestBody ProductDto productDto,
-                                                    @PathVariable("id") String id) throws ProductException {
+                                                    @PathVariable("id") String id)
+            throws ProductException {
         try {
             Product productUpdated = productsRepository.update(ProductDto.toProduct(productDto), id).join();
+
+            PublishResponse publishResponse = eventsPublisher.sendProductEvent(productUpdated, EventType.PRODUCT_UPDATED,
+                    "jk2455892@gmail.com").join();
+            ThreadContext.put("messageId", publishResponse.messageId());
+
             LOG.info("Product updated - ID:{}", productUpdated.getId());
             return new ResponseEntity<>(new ProductDto(productUpdated), HttpStatus.OK);
-        } catch (CompletionException completionException) {
+        } catch (CompletionException | JsonProcessingException completionException) {
             throw new ProductException(ProductErrors.PRODUCT_NOT_FOUND, id);
         }
     }
